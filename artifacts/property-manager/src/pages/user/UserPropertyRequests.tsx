@@ -80,11 +80,55 @@ export default function UserPropertyRequestsPage() {
         return
       }
 
-      const { data: tenant } = await supabase
+      let { data: tenant } = await supabase
         .from('tenants')
         .select('id')
         .eq('user_id', user.id)
-        .single() as { data: { id: string } | null }
+        .maybeSingle() as { data: { id: string } | null }
+
+      if (!tenant) {
+        const meta = user.user_metadata ?? {}
+        const tenantPayload = {
+          user_id: user.id,
+          full_name: meta.full_name ?? meta.name ?? user.email?.split('@')[0] ?? 'User',
+          email: user.email ?? null,
+          avatar_url: meta.avatar_url ?? meta.picture ?? null,
+          provider: user.app_metadata?.provider ?? 'email',
+        }
+
+        const { data: createdTenant, error: insertError } = await supabase
+          .from('tenants')
+          .insert(tenantPayload)
+          .select('id')
+          .single() as { data: { id: string } | null; error?: { code?: string; message?: string } | null }
+
+        if (insertError && (insertError.code === 'PGRST204' || insertError.message?.includes('provider'))) {
+          const { data: createdTenantWithoutProvider, error: fallbackInsertError } = await supabase
+            .from('tenants')
+            .insert({
+              user_id: user.id,
+              full_name: tenantPayload.full_name,
+              email: tenantPayload.email,
+              avatar_url: tenantPayload.avatar_url,
+            })
+            .select('id')
+            .single() as { data: { id: string } | null; error?: { code?: string; message?: string } | null }
+
+          if (fallbackInsertError) {
+            console.error('[property requests] tenant creation failed:', fallbackInsertError)
+            setLoading(false)
+            return
+          }
+
+          tenant = createdTenantWithoutProvider
+        } else if (insertError) {
+          console.error('[property requests] tenant creation failed:', insertError)
+          setLoading(false)
+          return
+        } else {
+          tenant = createdTenant
+        }
+      }
 
       if (!tenant) {
         setLoading(false)

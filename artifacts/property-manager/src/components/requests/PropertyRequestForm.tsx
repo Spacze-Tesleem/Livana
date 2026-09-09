@@ -227,11 +227,48 @@ export default function PropertyRequestForm({ initialValues, editingRequest, onS
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Please sign in to continue.')
 
-      const { data: tenant } = await supabase
+      let { data: tenant } = await supabase
         .from('tenants')
         .select('id')
         .eq('user_id', user.id)
-        .single() as { data: { id: string } | null }
+        .maybeSingle() as { data: { id: string } | null }
+
+      if (!tenant) {
+        const meta = user.user_metadata ?? {}
+        const tenantPayload = {
+          user_id: user.id,
+          full_name: meta.full_name ?? meta.name ?? user.email?.split('@')[0] ?? 'User',
+          email: user.email ?? null,
+          avatar_url: meta.avatar_url ?? meta.picture ?? null,
+          provider: user.app_metadata?.provider ?? 'email',
+        }
+
+        const { data: createdTenant, error: insertError } = await supabase
+          .from('tenants')
+          .insert(tenantPayload)
+          .select('id')
+          .single() as { data: { id: string } | null; error?: { code?: string; message?: string } | null }
+
+        if (insertError && (insertError.code === 'PGRST204' || insertError.message?.includes('provider'))) {
+          const { data: createdTenantWithoutProvider, error: fallbackInsertError } = await supabase
+            .from('tenants')
+            .insert({
+              user_id: user.id,
+              full_name: tenantPayload.full_name,
+              email: tenantPayload.email,
+              avatar_url: tenantPayload.avatar_url,
+            })
+            .select('id')
+            .single() as { data: { id: string } | null; error?: { code?: string; message?: string } | null }
+
+          if (fallbackInsertError) throw fallbackInsertError
+          tenant = createdTenantWithoutProvider
+        } else if (insertError) {
+          throw insertError
+        } else {
+          tenant = createdTenant
+        }
+      }
 
       if (!tenant) throw new Error('Tenant profile not found.')
 
@@ -492,7 +529,7 @@ export default function PropertyRequestForm({ initialValues, editingRequest, onS
                   <MoneyInput
                     value={values.min_budget}
                     onChange={value => updateField('min_budget', value)}
-                    placeholder="2,000,000"
+                    placeholder="200,000"
                     className="rounded-2xl border border-slate-200 bg-slate-50"
                   />
                   {errors.min_budget && <p className="text-sm text-red-500">{errors.min_budget}</p>}
