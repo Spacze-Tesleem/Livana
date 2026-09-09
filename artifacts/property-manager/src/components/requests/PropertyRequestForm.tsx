@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 import type { PropertyRequest } from '@/types'
 
@@ -57,13 +56,13 @@ const defaultValues: PropertyRequestFormValues = {
 }
 
 interface PropertyRequestFormProps {
-  open: boolean
-  onOpenChange: (value: boolean) => void
   initialValues?: Partial<PropertyRequestFormValues>
+  editingRequest?: PropertyRequest | null
   onSuccess?: (request: PropertyRequest) => void
+  onCancelEdit?: () => void
 }
 
-export default function PropertyRequestForm({ open, onOpenChange, initialValues, onSuccess }: PropertyRequestFormProps) {
+export default function PropertyRequestForm({ initialValues, editingRequest, onSuccess, onCancelEdit }: PropertyRequestFormProps) {
   const [values, setValues] = useState<PropertyRequestFormValues>({ ...defaultValues, ...initialValues })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -71,7 +70,7 @@ export default function PropertyRequestForm({ open, onOpenChange, initialValues,
   useEffect(() => {
     setValues({ ...defaultValues, ...initialValues })
     setErrors({})
-  }, [open, initialValues])
+  }, [initialValues, editingRequest])
 
   const stateOptions = useMemo(() => ['Lagos', 'Ogun', 'Abuja', 'Rivers', 'Enugu', 'Kaduna', 'Kano'], [])
 
@@ -143,19 +142,40 @@ export default function PropertyRequestForm({ open, onOpenChange, initialValues,
         move_in_timeline: values.move_in_timeline || null,
         features: values.features.length ? values.features : null,
         notes: values.notes.trim() || null,
-        status: 'submitted',
       }
 
-      const { data, error } = await supabase
-        .from('property_requests')
-        .insert(payload)
-        .select()
-        .single()
+      let result: PropertyRequest | null = null
 
-      if (error) throw error
+      if (editingRequest) {
+        const { data, error } = await supabase
+          .from('property_requests')
+          .update({
+            ...payload,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editingRequest.id)
+          .select()
+          .single()
 
-      onSuccess?.(data as PropertyRequest)
-      onOpenChange(false)
+        if (error) throw error
+        result = data as PropertyRequest
+      } else {
+        const { data, error } = await supabase
+          .from('property_requests')
+          .insert({
+            ...payload,
+            status: 'submitted',
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+        result = data as PropertyRequest
+      }
+
+      onSuccess?.(result)
+      setValues({ ...defaultValues, ...initialValues })
+      setErrors({})
     } catch (error) {
       console.error('[property request create]', error)
       setErrors({ form: error instanceof Error ? error.message : 'Unable to save request.' })
@@ -164,22 +184,25 @@ export default function PropertyRequestForm({ open, onOpenChange, initialValues,
     }
   }
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 md:items-center md:p-6">
-      <div className="h-[95vh] w-full overflow-y-auto rounded-t-3xl bg-white md:max-w-2xl md:rounded-3xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3 md:px-6">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">New request</p>
-            <h2 className="text-lg font-extrabold text-gray-900">Property Request</h2>
-          </div>
-          <button type="button" onClick={() => onOpenChange(false)} className="rounded-xl border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50">
-            <X className="h-4 w-4" />
-          </button>
+    <section className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm md:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-extrabold text-gray-900">What are you looking for?</h2>
+          <p className="mt-1 text-sm text-gray-500">Tell Livarex what you need and we’ll help you narrow down the right options.</p>
         </div>
+        {editingRequest && onCancelEdit && (
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
+          >
+            Cancel edit
+          </button>
+        )}
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 p-4 md:p-6">
+      <form onSubmit={handleSubmit} className="space-y-5">
           {errors.form && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{errors.form}</div>
           )}
@@ -364,22 +387,14 @@ export default function PropertyRequestForm({ open, onOpenChange, initialValues,
 
           <div className="flex items-center justify-end gap-3 border-t border-gray-100 pt-4">
             <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
               type="submit"
               disabled={submitting}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 md:min-w-[220px]"
             >
-              {submitting ? 'Saving...' : 'Submit Request'}
+              {submitting ? (editingRequest ? 'Updating...' : 'Submitting...') : editingRequest ? 'Update Property Request' : 'Submit Property Request'}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </section>
   )
 }

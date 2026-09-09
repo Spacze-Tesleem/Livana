@@ -35,9 +35,10 @@ function formatCurrency(value: number | null | undefined) {
 interface PropertyRequestDetailProps {
   request: PropertyRequest
   matches?: Array<{ id: string; properties?: any }>
+  onEdit?: (request: PropertyRequest) => void
 }
 
-export default function PropertyRequestDetail({ request }: PropertyRequestDetailProps) {
+export default function PropertyRequestDetail({ request, onEdit }: PropertyRequestDetailProps) {
   const updatedAgo = formatDistanceToNow(new Date(request.updated_at), { addSuffix: true })
 
   return (
@@ -49,9 +50,21 @@ export default function PropertyRequestDetail({ request }: PropertyRequestDetail
             <h3 className="mt-1 text-xl font-extrabold text-gray-900">{request.property_type}</h3>
           </div>
 
-          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_STYLES[request.status] ?? STATUS_STYLES.submitted}`}>
-            {STATUS_LABELS[request.status] ?? request.status}
-          </span>
+          <div className="flex items-center gap-2">
+            {request.status === 'submitted' || request.status === 'reviewing' ? (
+              <button
+                type="button"
+                onClick={() => onEdit?.(request)}
+                className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100"
+              >
+                Edit request
+              </button>
+            ) : null}
+
+            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-semibold ${STATUS_STYLES[request.status] ?? STATUS_STYLES.submitted}`}>
+              {STATUS_LABELS[request.status] ?? request.status}
+            </span>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

@@ -11,6 +11,7 @@ import { getPlatformSettings, getNotificationSettings, phoneToWaLink } from '../
 import { fetchSupportPresence, subscribeSupportPresence, type LiveSupportState, type SupportAgent } from '../lib/live-support'
 import { assignChatToAgent } from '../lib/support-assignment'
 import { getSupportHours, isSupportOpen, type SupportHours } from '../lib/support-hours'
+import { buildWhatsAppMessage, generateReferenceCode, getWhatsAppPhoneNumber, type ConciergeEnquiryType } from '../lib/whatsapp-config'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,7 +58,23 @@ interface PropertyContext {
   image: string | null
 }
 
+interface ConciergeFormState {
+  name: string
+  email: string
+  phone: string
+  propertyType: string
+  preferredLocation: string
+  minBudget: string
+  maxBudget: string
+  bedrooms: string
+  details: string
+  purpose: string
+  propertyId: string | null
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
+
+const AI_CHAT_ENABLED = import.meta.env.VITE_AI_CHAT_ENABLED === 'true'
 
 const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL
   ? `${import.meta.env.VITE_CHAT_API_URL}/api/chat`
@@ -66,11 +83,12 @@ const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL
 // ── Menu options ──────────────────────────────────────────────────────────────
 
 const MENU_OPTIONS = [
-  { icon: Home, title: 'Find a property', desc: 'Help me find a suitable home.', msg: 'Find a property for me. Please ask about my location, budget, property type, and bedrooms.' },
-  { icon: CalendarCheck, title: 'Book an inspection', desc: 'I want to inspect a property.', msg: 'I want to book a property inspection.' },
-  { icon: Building2, title: 'List my property', desc: 'I have a property to list.', msg: 'I want to list my property on Livarex.' },
-  { icon: MessageCircle, title: 'Something else', desc: 'I have another question.', msg: 'Tell us what you need help with.' },
-]
+  { icon: Home, title: 'Find a property', desc: 'Find a suitable home or rental that matches your preferences.', msg: 'Find a property for me.', enquiryType: 'find_property' },
+  { icon: CalendarCheck, title: 'Request a property', desc: 'Tell us what you want and we’ll shortlist options for you.', msg: 'Request a property for me.', enquiryType: 'request_property' },
+  { icon: Building2, title: 'List my property', desc: 'Share your property details and we’ll help you list it.', msg: 'I want to list my property on Livarex.', enquiryType: 'list_property' },
+  { icon: MessageCircle, title: 'Book an inspection', desc: 'Schedule a viewing for a property you’re interested in.', msg: 'I want to book a property inspection.', enquiryType: 'book_inspection' },
+  { icon: MessageCircle, title: 'General enquiry', desc: 'Ask a general question or get support from the Livarex team.', msg: 'I have a question about Livarex.', enquiryType: 'general_enquiry' },
+] as const
 
 const MENU_CHIPS = [
   { label: 'Top rentals',  msg: 'Show me the best rentals available right now.' },
@@ -146,6 +164,21 @@ export default function ChatWidget() {
   const [view, setView]                         = useState<WidgetView>('home')
   const [propertyContext, setPropertyContext]   = useState<PropertyContext | null>(null)
   const [selectedIntent, setSelectedIntent]     = useState<string | null>(null)
+  const [selectedEnquiry, setSelectedEnquiry]   = useState<ConciergeEnquiryType | null>(null)
+  const [conciergeForm, setConciergeForm]       = useState<ConciergeFormState>({
+    name: '',
+    email: '',
+    phone: '',
+    propertyType: 'rent',
+    preferredLocation: '',
+    minBudget: '',
+    maxBudget: '',
+    bedrooms: '',
+    details: '',
+    purpose: 'Rent',
+    propertyId: null,
+  })
+  const [conciergeSubmitting, setConciergeSubmitting] = useState(false)
 
   // ── AI bot state ─────────────────────────────────────────────────────────
   const [messages, setMessages]                 = useState<Message[]>([])
@@ -157,6 +190,7 @@ export default function ChatWidget() {
   const [showMenu, setShowMenu]                 = useState(false)
 
   const [waHref, setWaHref] = useState('https://wa.me/2347061370742?text=Hello%20Livarex!')
+  const [conciergeReady, setConciergeReady] = useState(false)
 
   // ── Support hours + presence ──────────────────────────────────────────────
   const [supportHours, setSupportHours]         = useState<SupportHours | null>(null)
@@ -177,7 +211,10 @@ export default function ChatWidget() {
           : 'Hello Livarex!'
         setWaHref(phoneToWaLink(s.phone, message))
       }
-    }).catch(() => {})
+      setConciergeReady(true)
+    }).catch(() => {
+      setConciergeReady(true)
+    })
   }, [propertyContext])
 
   // ── Live-agent form fields ────────────────────────────────────────────────
@@ -745,6 +782,66 @@ export default function ChatWidget() {
 
   const canSend = (input.trim().length > 0 || !!pendingImg) && !loading
 
+  async function captureConciergeLead() {
+    if (!conciergeReady) return
+    try {
+      const phone = conciergeForm.phone.trim() || (await getWhatsAppPhoneNumber())
+      const referenceCode = generateReferenceCode(selectedEnquiry ?? 'general_enquiry')
+      const payload = {
+        name: conciergeForm.name.trim(),
+        email: conciergeForm.email.trim() || undefined,
+        phone: phone || undefined,
+        enquiry_type: selectedEnquiry ?? 'general_enquiry',
+        purpose: conciergeForm.purpose || undefined,
+        property_type: conciergeForm.propertyType || undefined,
+        preferred_location: conciergeForm.preferredLocation || undefined,
+        min_budget: conciergeForm.minBudget || undefined,
+        max_budget: conciergeForm.maxBudget || undefined,
+        bedrooms: conciergeForm.bedrooms || undefined,
+        details: conciergeForm.details || undefined,
+        message: selectedIntent || undefined,
+        source_page: location || undefined,
+        reference_code: referenceCode,
+        property_id: propertyContext?.id ?? undefined,
+      }
+
+      const message = buildWhatsAppMessage(payload)
+      const agentPhone = await getWhatsAppPhoneNumber()
+
+      if (isSupabaseConfigured()) {
+        try {
+          const supabase = createClient()
+          await supabase.from('whatsapp_leads').insert({
+            tenant_id: null,
+            name: payload.name,
+            email: payload.email ?? null,
+            phone: payload.phone ?? null,
+            enquiry_type: payload.enquiry_type,
+            property_id: payload.property_id ?? null,
+            purpose: payload.purpose ?? null,
+            property_type: payload.property_type ?? null,
+            preferred_location: payload.preferred_location ?? null,
+            min_budget: payload.min_budget ? Number(payload.min_budget) : null,
+            max_budget: payload.max_budget ? Number(payload.max_budget) : null,
+            bedrooms: payload.bedrooms ? Number(payload.bedrooms) : null,
+            details: payload.details ?? null,
+            message: payload.message ?? payload.details ?? null,
+            source_page: payload.source_page ?? null,
+            reference_code: payload.reference_code ?? null,
+            status: 'new',
+          })
+        } catch (error) {
+          console.error('[ChatWidget] Lead capture failed:', error)
+        }
+      }
+
+      window.open(phoneToWaLink(agentPhone, message), '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      console.error('[ChatWidget] concierge handoff failed:', error)
+      window.open(waHref, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   function startChat(openingPrompt?: string) {
     setView('bot')
     setShowEmoji(false)
@@ -762,13 +859,42 @@ export default function ChatWidget() {
 
   function chooseIntent(option: typeof MENU_OPTIONS[number]) {
     setSelectedIntent(option.msg)
+    setSelectedEnquiry(option.enquiryType)
+
     if (option.title === 'Book an inspection') {
-      goLive(option.msg)
-    } else if (option.title === 'List my property') {
-      setOpen(false)
-      redirect('/landlord/register')
-    } else {
+      if (AI_CHAT_ENABLED) {
+        goLive(option.msg)
+        return
+      }
+      setView('home')
+      setShowMenu(false)
+      setOpen(true)
+      setConciergeForm((prev) => ({ ...prev, purpose: 'Inspection', propertyType: propertyContext?.type || 'rent' }))
+      return
+    }
+
+    if (option.title === 'List my property') {
+      if (AI_CHAT_ENABLED) {
+        setOpen(false)
+        redirect('/landlord/register')
+        return
+      }
+      setView('home')
+      setShowMenu(false)
+      setOpen(true)
+      setConciergeForm((prev) => ({ ...prev, purpose: 'Listing a property', propertyType: propertyContext?.type || 'rent' }))
+      return
+    }
+
+    if (AI_CHAT_ENABLED) {
       startChat(option.msg)
+      return
+    }
+
+    if (option.enquiryType === 'find_property' || option.enquiryType === 'request_property' || option.enquiryType === 'general_enquiry') {
+      setView('home')
+      setShowMenu(false)
+      setOpen(true)
     }
   }
 
@@ -780,6 +906,18 @@ export default function ChatWidget() {
   const goHome = () => { setShowEmoji(false); setShowMenu(false); setView('home') }
 
   // Presence line for the header
+  function handleConciergeSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedEnquiry) return
+
+    setConciergeSubmitting(true)
+    captureConciergeLead().finally(() => setConciergeSubmitting(false))
+  }
+
+  function updateConciergeField<K extends keyof ConciergeFormState>(field: K, value: ConciergeFormState[K]) {
+    setConciergeForm(prev => ({ ...prev, [field]: value }))
+  }
+
   const presenceLine = (() => {
     if (liveState.availableCount > 0) {
       return { dot: 'bg-emerald-400', text: `Online · ${liveState.availableCount} agent${liveState.availableCount === 1 ? ' available' : 's available'}` }
@@ -903,7 +1041,7 @@ export default function ChatWidget() {
 
             <div className="px-5 pt-6 pb-4">
               <p className="text-[20px] font-extrabold text-slate-950 tracking-tight">Hi there 👋</p>
-              <p className="mt-1 text-[13px] text-slate-500">How can we help you today?</p>
+              <p className="mt-1 text-[13px] text-slate-500">{AI_CHAT_ENABLED ? 'How can we help you today?' : 'Livarex Property Assistant is here to help.'}</p>
             </div>
 
             {propertyContext && (
@@ -920,6 +1058,60 @@ export default function ChatWidget() {
                 <div className="mt-3 flex gap-2">
                   <button onClick={() => startChat(`I have a question about ${propertyContext.title} in ${propertyContext.city}.`)} className="flex-1 rounded-lg bg-white px-2 py-2 text-[11px] font-bold text-blue-700 shadow-sm">Ask a question</button>
                   <button onClick={() => { setSelectedIntent('I want to book an inspection.'); goLive('I want to book an inspection.') }} className="flex-1 rounded-lg bg-primary px-2 py-2 text-[11px] font-bold text-white">Request inspection</button>
+                </div>
+              </div>
+            )}
+
+            {!AI_CHAT_ENABLED && selectedEnquiry && (
+              <div className="mx-4 mb-3 rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-700">Property concierge</p>
+                <div className="mt-2 rounded-xl border border-emerald-100 bg-white p-3">
+                  <form onSubmit={handleConciergeSubmit} className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="Name *">
+                        <input value={conciergeForm.name} onChange={e => updateConciergeField('name', e.target.value)} required className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                      </Field>
+                      <Field label="Phone">
+                        <input value={conciergeForm.phone} onChange={e => updateConciergeField('phone', e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                      </Field>
+                    </div>
+                    <Field label="Email">
+                      <input value={conciergeForm.email} onChange={e => updateConciergeField('email', e.target.value)} type="email" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                    </Field>
+                    {selectedEnquiry !== 'general_enquiry' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label="Property type">
+                          <select value={conciergeForm.propertyType} onChange={e => updateConciergeField('propertyType', e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white">
+                            <option value="rent">Rent</option>
+                            <option value="sale">Buy</option>
+                            <option value="lease">Lease</option>
+                          </select>
+                        </Field>
+                        <Field label="Bedrooms">
+                          <input value={conciergeForm.bedrooms} onChange={e => updateConciergeField('bedrooms', e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                        </Field>
+                      </div>
+                    )}
+                    <Field label="Preferred location">
+                      <input value={conciergeForm.preferredLocation} onChange={e => updateConciergeField('preferredLocation', e.target.value)} placeholder="Lagos, Abuja, Port Harcourt..." className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                    </Field>
+                    {(selectedEnquiry === 'find_property' || selectedEnquiry === 'request_property') && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label="Min budget">
+                          <input value={conciergeForm.minBudget} onChange={e => updateConciergeField('minBudget', e.target.value)} placeholder="₦" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                        </Field>
+                        <Field label="Max budget">
+                          <input value={conciergeForm.maxBudget} onChange={e => updateConciergeField('maxBudget', e.target.value)} placeholder="₦" className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                        </Field>
+                      </div>
+                    )}
+                    <Field label="Additional details">
+                      <textarea value={conciergeForm.details} onChange={e => updateConciergeField('details', e.target.value)} rows={3} className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-900 outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/20 focus:bg-white" />
+                    </Field>
+                    <button type="submit" disabled={conciergeSubmitting} className="w-full rounded-xl bg-emerald-600 px-3 py-2.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-500 disabled:opacity-60">
+                      {conciergeSubmitting ? 'Preparing WhatsApp…' : 'Continue on WhatsApp'}
+                    </button>
+                  </form>
                 </div>
               </div>
             )}

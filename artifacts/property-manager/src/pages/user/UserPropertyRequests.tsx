@@ -23,6 +23,24 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'Closed',
 }
 
+function getFormValuesFromRequest(request: PropertyRequest) {
+  return {
+    purpose: request.purpose,
+    property_type: request.property_type,
+    state: request.state,
+    preferred_area: request.preferred_area,
+    alternative_areas: request.alternative_areas?.join(', ') ?? '',
+    min_budget: String(request.min_budget),
+    max_budget: String(request.max_budget),
+    bedrooms: request.bedrooms ? String(request.bedrooms) : '',
+    bathrooms: request.bathrooms ? String(request.bathrooms) : '',
+    furnishing: request.furnishing ?? 'Any',
+    move_in_timeline: request.move_in_timeline ?? 'Flexible',
+    features: request.features ?? [],
+    notes: request.notes ?? '',
+  }
+}
+
 export default function UserPropertyRequestsPage() {
   const [, navigate] = useLocation()
   const searchParams = useSearchParams()
@@ -30,7 +48,8 @@ export default function UserPropertyRequestsPage() {
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [tenantId, setTenantId] = useState<string | null>(null)
-  const [formOpen, setFormOpen] = useState(false)
+  const [editingRequestId, setEditingRequestId] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const loadRequests = useCallback(async (currentTenantId: string | null) => {
     if (!currentTenantId) return
@@ -42,17 +61,15 @@ export default function UserPropertyRequestsPage() {
       .eq('tenant_id', currentTenantId)
       .order('updated_at', { ascending: false })
 
-    if (!error) {
-      const rows = (data ?? []) as RequestWithRelations[]
-      setRequests(rows)
-      setSelectedRequestId(prev => prev ?? rows[0]?.id ?? null)
+    if (error) {
+      console.error('[property requests] load failed:', error)
+      return
     }
-  }, [])
 
-  useEffect(() => {
-    const shouldOpen = searchParams.get('new') === 'true'
-    setFormOpen(shouldOpen)
-  }, [searchParams])
+    const rows = (data ?? []) as RequestWithRelations[]
+    setRequests(rows)
+    setSelectedRequestId(prev => prev ?? rows[0]?.id ?? null)
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -110,6 +127,7 @@ export default function UserPropertyRequestsPage() {
   }, [tenantId, loadRequests])
 
   const selectedRequest = requests.find(request => request.id === selectedRequestId) ?? requests[0] ?? null
+  const editingRequest = requests.find(request => request.id === editingRequestId) ?? null
 
   const summaryCards = useMemo(() => {
     const activeCount = requests.filter(request => !['completed', 'closed'].includes(request.status)).length
@@ -117,7 +135,7 @@ export default function UserPropertyRequestsPage() {
     const completedCount = requests.filter(request => request.status === 'completed' || request.status === 'closed').length
 
     return [
-      { label: 'Active Requests', value: activeCount },
+      { label: 'Active', value: activeCount },
       { label: 'Matched', value: matchedCount },
       { label: 'Completed', value: completedCount },
     ]
@@ -147,91 +165,121 @@ export default function UserPropertyRequestsPage() {
     }
   }, [searchParams])
 
-  function handleCreateSuccess(request: PropertyRequest) {
+  function handleFormSuccess(request: PropertyRequest) {
     const normalized: RequestWithRelations = { ...request, property_request_matches: [] }
-    setRequests(prev => [normalized, ...prev])
+
+    setRequests(prev => {
+      const hasRequest = prev.some(item => item.id === request.id)
+      if (hasRequest) {
+        return prev.map(item => item.id === request.id ? { ...item, ...request } : item)
+      }
+      return [normalized, ...prev]
+    })
+
     setSelectedRequestId(request.id)
+    setEditingRequestId(null)
+    setSuccessMessage('Your property request has been submitted. Our team will begin reviewing it.')
     navigate('/user/requests')
+  }
+
+  function handleEditRequest(request: PropertyRequest) {
+    setEditingRequestId(request.id)
+    setSelectedRequestId(request.id)
+    setSuccessMessage(null)
   }
 
   return (
     <AuthGuard require="tenant">
       <UserLayout title="Property Requests">
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 border-b border-gray-100 bg-white px-4 py-4 md:flex-row md:items-center md:justify-between md:px-0 md:py-0 md:border-b-0">
-            <div>
-              <p className="text-sm text-gray-500">Tell us what you're looking for and we'll help you find matching properties.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFormOpen(true)}
-              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-            >
-              New Property Request
-            </button>
-          </div>
+        <div className="mx-auto max-w-6xl space-y-5 px-4 py-5 md:px-6 lg:px-8">
+          <header className="pt-1">
+            <h1 className="text-2xl font-black tracking-tight text-gray-900">Property Requests</h1>
+            <p className="mt-1 text-sm text-gray-500">Tell us what you're looking for and we'll help you find matching properties.</p>
+          </header>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            {summaryCards.map(card => (
-              <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">{card.label}</p>
-                <p className="mt-2 text-2xl font-extrabold text-gray-900">{card.value}</p>
-              </div>
-            ))}
-          </div>
+          <PropertyRequestForm
+            initialValues={editingRequest ? getFormValuesFromRequest(editingRequest) : initialFormValues}
+            editingRequest={editingRequest}
+            onSuccess={handleFormSuccess}
+            onCancelEdit={() => setEditingRequestId(null)}
+          />
 
-          {loading ? (
-            <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="h-32 animate-pulse rounded-2xl border border-gray-100 bg-white" />
-                ))}
-              </div>
-              <div className="h-72 animate-pulse rounded-2xl border border-gray-100 bg-white" />
-            </div>
-          ) : requests.length === 0 ? (
-            <div className="rounded-3xl border border-gray-100 bg-white p-10 text-center shadow-sm">
-              <h3 className="text-xl font-extrabold text-gray-900">No property requests yet</h3>
-              <p className="mt-2 text-sm text-gray-500">Tell us what you're looking for and we’ll start searching for matching homes.</p>
-              <button
-                type="button"
-                onClick={() => setFormOpen(true)}
-                className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                Create a property request
-              </button>
-            </div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="space-y-3">
-                {requests.map(request => (
-                  <PropertyRequestCard
-                    key={request.id}
-                    request={request}
-                    selected={selectedRequest?.id === request.id}
-                    onSelect={value => setSelectedRequestId(value.id)}
-                  />
-                ))}
-              </div>
-
-              <div className="space-y-4">
-                {selectedRequest && (
-                  <>
-                    <PropertyRequestDetail request={selectedRequest} />
-                    <MatchedProperties matches={selectedRequest.property_request_matches ?? []} isAuthenticated />
-                  </>
-                )}
-              </div>
+          {successMessage && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm">
+              {successMessage}
             </div>
           )}
-        </div>
 
-        <PropertyRequestForm
-          open={formOpen}
-          onOpenChange={setFormOpen}
-          initialValues={initialFormValues}
-          onSuccess={handleCreateSuccess}
-        />
+          {requests.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-3">
+              {summaryCards.map(card => (
+                <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">{card.label}</p>
+                  <p className="mt-2 text-2xl font-extrabold text-gray-900">{card.value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <section className="rounded-3xl border border-gray-100 bg-white p-4 shadow-sm md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-extrabold text-gray-900">My Requests</h2>
+              {requests.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRequestId(null)
+                    setSuccessMessage(null)
+                    window.scrollTo({ top: 0, behavior: 'smooth' })
+                  }}
+                  className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                >
+                  Create another request
+                </button>
+              )}
+            </div>
+
+            {loading ? (
+              <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className="h-32 animate-pulse rounded-2xl border border-gray-100 bg-white" />
+                  ))}
+                </div>
+                <div className="h-72 animate-pulse rounded-2xl border border-gray-100 bg-white" />
+              </div>
+            ) : requests.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                No requests yet — submit the form above to get started.
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                <div className="space-y-3">
+                  {requests.map(request => (
+                    <PropertyRequestCard
+                      key={request.id}
+                      request={request}
+                      selected={selectedRequest?.id === request.id}
+                      onSelect={value => setSelectedRequestId(value.id)}
+                    />
+                  ))}
+                </div>
+
+                <div className="space-y-4">
+                  {selectedRequest && (
+                    <>
+                      <PropertyRequestDetail
+                        request={selectedRequest}
+                        onEdit={handleEditRequest}
+                      />
+                      <MatchedProperties matches={selectedRequest.property_request_matches ?? []} isAuthenticated />
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </UserLayout>
     </AuthGuard>
   )
