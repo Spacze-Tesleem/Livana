@@ -64,9 +64,9 @@ CREATE POLICY "property_requests_update_own_submitted_or_reviewing"
     tenant_id IN (
       SELECT id FROM public.tenants WHERE user_id = auth.uid()
     )
-    AND tenant_id = OLD.tenant_id
+    AND status IN ('submitted', 'reviewing')
     AND assigned_to IS NULL
-    AND priority = OLD.priority
+    AND priority = 'normal'
   );
 
 CREATE POLICY "property_requests_admin_manage"
