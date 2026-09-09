@@ -4,6 +4,7 @@ import {
   Loader2, Clock2, Smile, Home, CalendarCheck, Building2,
   MessageCircle, AlertCircle,
 } from 'lucide-react'
+import WhatsAppConcierge from './chat/WhatsAppConcierge'
 import { useLocation, redirect } from '../lib/navigation'
 import { createClient, getSupabaseImageUrl, isSupabaseConfigured } from '../lib/supabase'
 import { formatNaira } from '../lib/currency'
@@ -197,6 +198,7 @@ export default function ChatWidget() {
   const [, setHoursTick]                        = useState(0)
 
   useEffect(() => {
+    if (!AI_CHAT_ENABLED) return
     if (!open) return
     getSupportHours().then(h => { if (h) setSupportHours(h) }).catch(() => {})
     const t = setInterval(() => setHoursTick(n => n + 1), 60_000)
@@ -233,6 +235,7 @@ export default function ChatWidget() {
   const [presenceReady, setPresenceReady]       = useState(false)
 
   useEffect(() => {
+    if (!AI_CHAT_ENABLED) return
     if (!open) return
     const unsub = subscribeSupportPresence(state => {
       setLiveState(state)
@@ -242,6 +245,7 @@ export default function ChatWidget() {
   }, [open])
 
   useEffect(() => {
+    if (!AI_CHAT_ENABLED) return
     if (!open || !isSupabaseConfigured()) return
     const match = (location || '').match(/^\/listings\/([^/?#]+)/)
     if (!match) { setPropertyContext(null); return }
@@ -308,6 +312,7 @@ export default function ChatWidget() {
 
   // ── Restore an authenticated visitor's active thread on mount ─────────────
   useEffect(() => {
+    if (!AI_CHAT_ENABLED) return
     if (!isSupabaseConfigured()) return
     const supabase = createClient()
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -335,6 +340,7 @@ export default function ChatWidget() {
   const lastMsgTimestamp = useRef<string | null>(null)
 
   useEffect(() => {
+    if (!AI_CHAT_ENABLED) return
     if (!inquiryId) return
     setAgentThreadLoading(true)
 
@@ -951,6 +957,10 @@ export default function ChatWidget() {
   // Hide widget inside dashboards (early return AFTER all hooks)
   const path = (location || '').split('?')[0]
   if (path.startsWith('/admin') || path.startsWith('/landlord') || path.startsWith('/user') || path.startsWith('/dashboard')) return null
+
+  if (!AI_CHAT_ENABLED) {
+    return <WhatsAppConcierge />
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
