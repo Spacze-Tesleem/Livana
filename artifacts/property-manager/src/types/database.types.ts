@@ -217,6 +217,106 @@ export interface Database {
           created_at?: string
         }
       }
+      property_requests: {
+        Row: {
+          id: string
+          tenant_id: string
+          purpose: string
+          property_type: string
+          state: string
+          preferred_area: string
+          alternative_areas: string[] | null
+          min_budget: number
+          max_budget: number
+          bedrooms: number | null
+          bathrooms: number | null
+          furnishing: string | null
+          move_in_timeline: string | null
+          features: string[] | null
+          notes: string | null
+          status: 'submitted' | 'reviewing' | 'searching' | 'matched' | 'inspection' | 'completed' | 'closed'
+          assigned_to: string | null
+          priority: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          purpose: string
+          property_type: string
+          state: string
+          preferred_area: string
+          alternative_areas?: string[] | null
+          min_budget: number
+          max_budget: number
+          bedrooms?: number | null
+          bathrooms?: number | null
+          furnishing?: string | null
+          move_in_timeline?: string | null
+          features?: string[] | null
+          notes?: string | null
+          status?: 'submitted' | 'reviewing' | 'searching' | 'matched' | 'inspection' | 'completed' | 'closed'
+          assigned_to?: string | null
+          priority?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          purpose?: string
+          property_type?: string
+          state?: string
+          preferred_area?: string
+          alternative_areas?: string[] | null
+          min_budget?: number
+          max_budget?: number
+          bedrooms?: number | null
+          bathrooms?: number | null
+          furnishing?: string | null
+          move_in_timeline?: string | null
+          features?: string[] | null
+          notes?: string | null
+          status?: 'submitted' | 'reviewing' | 'searching' | 'matched' | 'inspection' | 'completed' | 'closed'
+          assigned_to?: string | null
+          priority?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      property_request_matches: {
+        Row: {
+          id: string
+          request_id: string
+          property_id: string
+          status: 'suggested' | 'shared' | 'dismissed' | string
+          match_score: number | null
+          match_notes: string | null
+          shared_with_customer_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          request_id: string
+          property_id: string
+          status?: 'suggested' | 'shared' | 'dismissed' | string
+          match_score?: number | null
+          match_notes?: string | null
+          shared_with_customer_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          request_id?: string
+          property_id?: string
+          status?: 'suggested' | 'shared' | 'dismissed' | string
+          match_score?: number | null
+          match_notes?: string | null
+          shared_with_customer_at?: string | null
+          created_at?: string
+        }
+      }
       enquiries: {
         Row: {
           id: string

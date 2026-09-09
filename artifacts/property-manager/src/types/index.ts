@@ -69,6 +69,57 @@ export interface Tenant {
   updated_at: string
 }
 
+export type PropertyRequestStatus =
+  | 'submitted'
+  | 'reviewing'
+  | 'searching'
+  | 'matched'
+  | 'inspection'
+  | 'completed'
+  | 'closed'
+
+export interface PropertyRequest {
+  id: string
+  tenant_id: string
+  purpose: 'Rent' | 'Lease' | 'Buy'
+  property_type: string
+  state: string
+  preferred_area: string
+  alternative_areas: string[] | null
+  min_budget: number
+  max_budget: number
+  bedrooms: number | null
+  bathrooms: number | null
+  furnishing: 'Any' | 'Furnished' | 'Semi-furnished' | 'Unfurnished' | null
+  move_in_timeline: string | null
+  features: string[] | null
+  notes: string | null
+  status: PropertyRequestStatus
+  assigned_to: string | null
+  priority: 'normal' | 'high' | 'urgent' | string
+  created_at: string
+  updated_at: string
+}
+
+export interface PropertyRequestMatch {
+  id: string
+  request_id: string
+  property_id: string
+  status: 'suggested' | 'shared' | 'dismissed' | string
+  match_score: number | null
+  match_notes: string | null
+  shared_with_customer_at: string | null
+  created_at: string
+}
+
+export interface PropertyRequestMatchWithProperty extends PropertyRequestMatch {
+  properties: PropertyWithLandlord
+}
+
+export interface PropertyRequestWithMatches extends PropertyRequest {
+  property_request_matches: PropertyRequestMatchWithProperty[]
+}
+
 export type EnquiryStatus = 'open' | 'replied' | 'closed'
 
 export interface SavedProperty {

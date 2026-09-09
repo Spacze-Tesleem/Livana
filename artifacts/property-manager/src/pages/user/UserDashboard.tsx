@@ -73,6 +73,7 @@ const TYPE_TABS = [
 ]
 
 export default function UserDashboardPage() {
+  const [, navigate] = useLocation()
   const [properties, setProperties] = useState<PropertyWithLandlord[]>([])
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [tenantId, setTenantId] = useState<string | null>(null)
@@ -126,6 +127,19 @@ export default function UserDashboardPage() {
 
   function clearFilters() {
     setSearch(''); setTypeFilter('all'); setStateFilter(''); setBedsFilter('')
+  }
+
+  function openPropertyRequestsBuilder() {
+    const params = new URLSearchParams({ new: 'true' })
+
+    if (typeFilter === 'rent') params.set('purpose', 'Rent')
+    if (typeFilter === 'lease') params.set('purpose', 'Lease')
+    if (typeFilter === 'sale') params.set('purpose', 'Buy')
+    if (stateFilter) params.set('state', stateFilter)
+    if (search) params.set('preferred_area', search)
+    if (bedsFilter) params.set('bedrooms', bedsFilter)
+
+    navigate(`/user/requests?${params.toString()}`)
   }
 
   const filtered = properties
@@ -261,13 +275,21 @@ export default function UserDashboardPage() {
                 <Building2 className="w-7 h-7 text-gray-300" />
               </div>
               <h3 className="font-bold text-gray-900 mb-1">No properties found</h3>
-              <p className="text-sm text-gray-500 mb-4">Try adjusting your filters.</p>
-              {hasFilters && (
-                <button onClick={clearFilters}
-                  className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-colors">
-                  Clear filters
+              <p className="text-sm text-gray-500 mb-2">Try adjusting your filters.</p>
+              <p className="text-sm text-gray-500 mb-4">Can't find what you're looking for?</p>
+              <p className="text-sm text-gray-500 mb-5">Create a property request and let Livarex help you find it.</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button onClick={openPropertyRequestsBuilder}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors">
+                  Create Property Request
                 </button>
-              )}
+                {hasFilters && (
+                  <button onClick={clearFilters}
+                    className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold rounded-xl transition-colors">
+                    Clear filters
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

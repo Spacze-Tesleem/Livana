@@ -50,6 +50,7 @@ const AdminHelp = lazy(() => import("@/pages/admin/AdminHelp"));
 const UserDashboard = lazy(() => import("@/pages/user/UserDashboard"));
 const UserProfile = lazy(() => import("@/pages/user/UserProfile"));
 const UserSaved = lazy(() => import("@/pages/user/UserSaved"));
+const UserPropertyRequests = lazy(() => import("@/pages/user/UserPropertyRequests"));
 const UserEnquiries = lazy(() => import("@/pages/user/UserEnquiries"));
 
 function NotFound() {
@@ -149,6 +150,7 @@ function Router() {
         <Route path="/user" component={UserDashboard} />
         <Route path="/user/profile" component={UserProfile} />
         <Route path="/user/saved" component={UserSaved} />
+        <Route path="/user/requests" component={UserPropertyRequests} />
         <Route path="/user/enquiries" component={UserEnquiries} />
 
         {/* Blog is coming soon — redirect to homepage to avoid stale-cache fallback */}

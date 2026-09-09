@@ -1,13 +1,14 @@
 import { Link, useLocation } from '@/lib/navigation'
 import {
-  LayoutDashboard, Heart, HeadphonesIcon, User, LogOut,
+  LayoutDashboard, Heart, ClipboardList, HeadphonesIcon, User, LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase'
 
 const mainNav = [
-  { href: '/user', label: 'Overview', icon: LayoutDashboard, exact: true },
+  { href: '/user', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/user/saved', label: 'Saved', icon: Heart, exact: false },
-  { href: '/user/enquiries', label: 'Support', icon: HeadphonesIcon, exact: false },
+  { href: '/user/requests', label: 'Requests', icon: ClipboardList, exact: false },
+  { href: '/user/enquiries', label: 'Enquiries', icon: HeadphonesIcon, exact: false },
   { href: '/user/profile', label: 'Profile', icon: User, exact: false },
 ]
 
